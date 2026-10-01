@@ -1,0 +1,6 @@
+node_modules/
+.env
+.env.local
+data/daily_deals.json
+data/inbound_listings.json
+data/buyers.json

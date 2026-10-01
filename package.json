@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "dotenv": "^18.0.3",
+    "openai": "^7.23.0",
+    "resend": "^6.29.0",
+    "webflow-api": "^3.3.4"
+  }
+}

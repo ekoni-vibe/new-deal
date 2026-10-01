@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>DEALROOM // Real Estate Deal Desk</title>
+
+  <!-- Suppress Tailwind CDN warnings (must run BEFORE the CDN script) -->
+  <script>window.tailwind = { config: { suppressWarnings: true } };</script>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <link rel="stylesheet" href="styles.css">
+
+  <!-- Modular app scripts (load before Alpine so alpine:init registers in time) -->
+  <script src="js/parser.js"></script>
+  <script src="js/underwriting.js"></script>
+  <script src="js/crm.js"></script>
+  <script src="js/app.js"></script>
+
+  <!-- Alpine.js (deferred, after the modules above) -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+</head>
+
+<body class="bg-slate-900 text-slate-100 font-mono min-h-screen" x-data="DealRoomApp">
+
+  <!-- HEADER -->
+  <header class="border-b-2 border-slate-700 px-4 py-3 flex items-center justify-between gap-3">
+    <h1 class="text-xl font-bold tracking-widest uppercase">DEALROOM<span class="text-amber-400">_</span></h1>
+    <span class="text-xs text-amber-400 uppercase" x-text="status" aria-live="polite"></span>
+  </header>
+
+  <!-- TOP NAVIGATION TABS -->
+  <nav class="flex flex-wrap border-b-2 border-slate-700" role="tablist" aria-label="Main sections">
+    <button type="button" role="tab" class="tab-btn" :class="{ 'tab-active': tab === 1 }" :aria-selected="tab === 1" @click="tab = 1">[1] DEAL SCOUT &amp; MATH</button>
+    <button type="button" role="tab" class="tab-btn" :class="{ 'tab-active': tab === 2 }" :aria-selected="tab === 2" @click="tab = 2">[2] BUYER CRM &amp; MATCHING</button>
+    <button type="button" role="tab" class="tab-btn" :class="{ 'tab-active': tab === 3 }" :aria-selected="tab === 3" @click="tab = 3">[3] CONTRACT DESK</button>
+    <button type="button" role="tab" class="tab-btn" :class="{ 'tab-active': tab === 4 }" :aria-selected="tab === 4" @click="tab = 4">[4] PIPELINE (<span x-text="pipeline.length"></span>)</button>
+  </nav>
+
+  <main class="p-4 max-w-6xl mx-auto">
+
+    <!-- ============ TAB 1: DEAL SCOUT & MATH ============ -->
+    <section x-show="tab === 1" role="tabpanel" class="space-y-4">
+      <div class="panel">
+        <h2 class="panel-title">// Listing Intake</h2>
+        <textarea class="field h-40" x-model="rawText" placeholder="Paste raw listing text here. Analysis, buyer matches and drafts update automatically."></textarea>
+        <div class="flex flex-wrap gap-3 mt-3">
+          <button type="button" class="btn" @click="runAll()">ANALYZE DEAL</button>
+          <button type="button" class="btn" @click="analyzeWithAI()">ANALYZE WITH AI (optional)</button>
+          <button type="button" class="btn" @click="loadSample()">LOAD SAMPLE</button>
+          <select class="field" style="width:auto" x-model.number="saveStage" aria-label="Pipeline stage">
+            <template x-for="(label, i) in stages" :key="label"><option :value="i + 1" x-text="label"></option></template>
+          </select>
+          <button type="button" class="btn" @click="saveCurrentDealToPipeline(saveStage)">SAVE TO PIPELINE</button>
+        </div>
+        <p class="text-xs text-slate-400 mt-3">Inbound leads: <span x-text="leadCount"></span></p>
+      </div>
+
+      <div class="panel">
+        <h2 class="panel-title">// AI Property Finder Assistant</h2>
+        <p class="text-xs text-slate-400 mb-2">Searches deals saved to the Pipeline tab. Try: "Find duplexes in 38118 or 44105 under $120k with ARV over $180k and high rent-to-price ratio."</p>
+        <div class="flex flex-wrap gap-2">
+          <input class="field flex-1" style="min-width:240px" x-model="aiQuery" @keydown.enter="runAIQuery()" placeholder="Ask in plain English...">
+          <button type="button" class="btn" @click="runAIQuery()">ASK</button>
+        </div>
+        <div class="mt-3 space-y-2" x-show="aiHistory.length">
+          <template x-for="(h, i) in aiHistory.slice().reverse()" :key="i">
+            <div class="border-2 border-slate-700 p-2 text-xs">
+              <div class="text-slate-400" x-text="'&gt; ' + h.q"></div>
+              <div class="text-amber-400 font-bold mt-1" x-text="h.summary"></div>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <template x-if="uw">
+        <div class="space-y-4">
+          <div class="panel">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+              <h2 class="panel-title mb-0">// Underwriting Output</h2>
+              <div class="flex items-center gap-3">
+                <span class="text-2xl font-bold" x-text="uw.score + '/100'"></span>
+                <span class="px-3 py-2 border-2 font-bold text-sm"
+                      :class="uw.pass ? 'border-emerald-400 text-emerald-400' : 'border-red-400 text-red-400'"
+                      x-text="uw.badge"></span>
+              </div>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm border-2 border-slate-700">
+                <tbody>
+                  <tr class="border-b border-slate-700"><td class="p-2">List Price</td><td class="p-2 text-right" x-text="money(uw.inputs.listPrice)"></td></tr>
+                  <tr class="border-b border-slate-700"><td class="p-2">ARV</td><td class="p-2 text-right" x-text="money(uw.inputs.arv)"></td></tr>
+                  <tr class="border-b border-slate-700"><td class="p-2">Est. Repairs</td><td class="p-2 text-right" x-text="money(uw.inputs.repairs)"></td></tr>
+                  <tr class="border-b border-slate-700"><td class="p-2">MAO (70% rule)</td><td class="p-2 text-right" x-text="money(uw.mao)"></td></tr>
+                  <tr class="border-b border-slate-700"><td class="p-2">Flip Spread (MAO - Price)</td><td class="p-2 text-right" :class="uw.flipSpread < 0 ? 'text-red-400' : 'text-emerald-400'" x-text="money(uw.flipSpread)"></td></tr>
+                  <tr class="border-b border-slate-700"><td class="p-2">1% Rent Ratio</td><td class="p-2 text-right" x-text="pct(uw.rentRatio)"></td></tr>
+                  <tr class="border-b border-slate-700"><td class="p-2">Cap Rate</td><td class="p-2 text-right" x-text="pct(uw.capRate)"></td></tr>
+                  <tr class="border-b border-slate-700"><td class="p-2">DSCR</td><td class="p-2 text-right" x-text="uw.dscr == null ? '--' : uw.dscr.toFixed(2)"></td></tr>
+                  <tr class="border-b border-slate-700"><td class="p-2">Cash-on-Cash Return</td><td class="p-2 text-right" x-text="pct(uw.cashOnCash)"></td></tr>
+                  <tr><td class="p-2">ZIP / Distress</td><td class="p-2 text-right" x-text="(deal.zip || '--') + (deal.isDistressed ? ' / DISTRESSED' : '')"></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h2 class="panel-title">// Escrow Line Item (Separate)</h2>
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm border-2 border-slate-700">
+                <tbody>
+                  <tr class="border-b border-slate-700"><td class="p-2">Gross Finder's Fee</td><td class="p-2 text-right" x-text="money(uw.finderFee.gross)"></td></tr>
+                  <tr class="border-b border-slate-700"><td class="p-2">Deductions</td><td class="p-2 text-right" x-text="money(uw.finderFee.deductions)"></td></tr>
+                  <tr><td class="p-2 font-bold text-amber-400" x-text="uw.finderFee.label"></td><td class="p-2 text-right font-bold text-amber-400" x-text="money(uw.finderFee.amount)"></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </template>
+    </section>
+
+    <!-- ============ TAB 2: BUYER CRM & MATCHING ============ -->
+    <section x-show="tab === 2" x-cloak role="tabpanel" class="space-y-4">
+      <div class="panel">
+        <h2 class="panel-title">// Buyer Density by Target ZIP</h2>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm border-2 border-slate-700">
+            <tbody>
+              <template x-for="z in zipRows" :key="z.zip">
+                <tr class="border-b border-slate-700">
+                  <td class="p-2" x-text="z.zip"></td>
+                  <td class="p-2 whitespace-pre" x-text="z.bar"></td>
+                  <td class="p-2 text-right" x-text="z.count + ' buyers'"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <h2 class="panel-title mb-0">// Matched Buyers</h2>
+          <div class="flex flex-wrap gap-2">
+            <button type="button" class="btn" @click="pushWebflow()">PUSH TO WEBFLOW (<span x-text="queueCount"></span> queued)</button>
+            <button type="button" class="btn" @click="dispatchTeasers()">DISPATCH TEASERS (<span x-text="resendQueueCount"></span> queued)</button>
+            <button type="button" class="btn" @click="runDailyCycleNow()">RUN DAILY AGENTIC CYCLE NOW</button>
+          </div>
+        </div>
+        <p class="text-slate-400 text-sm" x-show="!deal">Analyze a deal to see matches.</p>
+        <p class="text-slate-400 text-sm" x-show="deal && matches.length === 0">No buyers match this deal's ZIP, price and cap rate.</p>
+        <div class="overflow-x-auto" x-show="matches.length > 0">
+          <table class="w-full text-sm border-2 border-slate-700 min-w-[680px]">
+            <thead><tr class="border-b-2 border-slate-700 text-left"><th class="p-2">Buyer</th><th class="p-2">Email</th><th class="p-2">Budget</th><th class="p-2">Match Confidence</th></tr></thead>
+            <tbody>
+              <template x-for="m in matches" :key="m.id">
+                <tr class="border-b border-slate-700">
+                  <td class="p-2" x-text="m.name"></td>
+                  <td class="p-2" x-text="m.email || '--'"></td>
+                  <td class="p-2" x-text="m.maxBudget ? 'up to ' + money(m.maxBudget) : 'Any'"></td>
+                  <td class="p-2 font-bold text-amber-400" x-text="m.confidenceLabel"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2 class="panel-title">// Buyer Roster</h2>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm border-2 border-slate-700 min-w-[760px]">
+            <thead><tr class="border-b-2 border-slate-700 text-left"><th class="p-2">Name</th><th class="p-2">Email</th><th class="p-2">Target ZIPs</th><th class="p-2">Budget</th><th class="p-2">Min Cap</th><th class="p-2"></th></tr></thead>
+            <tbody>
+              <template x-for="b in buyers" :key="b.id">
+                <tr class="border-b border-slate-700">
+                  <td class="p-2" x-text="b.name"></td>
+                  <td class="p-2" x-text="b.email || '--'"></td>
+                  <td class="p-2" x-text="(b.targetZips || []).join(', ')"></td>
+                  <td class="p-2" x-text="b.maxBudget ? money(b.maxBudget) : 'Any'"></td>
+                  <td class="p-2" x-text="pct(b.minCapRate)"></td>
+                  <td class="p-2 text-right"><button type="button" class="btn" @click="removeBuyer(b.id)">DEL</button></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-5 gap-2 mt-4">
+          <input class="field" placeholder="Name" x-model="newBuyer.name">
+          <input class="field" placeholder="ZIPs (comma sep)" x-model="newBuyer.zips">
+          <input class="field" type="email" placeholder="Email" x-model="newBuyer.email">
+          <input class="field" type="number" placeholder="Max budget" x-model="newBuyer.maxBudget">
+          <input class="field" type="number" placeholder="Min cap %" x-model="newBuyer.minCapRate">
+        </div>
+        <button type="button" class="btn mt-3" @click="addBuyer()">ADD BUYER</button>
+
+        <h3 class="panel-title mt-6">// Bulk Import / Backup</h3>
+        <textarea class="field h-32" x-model="importText" placeholder='Paste buyers JSON: [{"name":"...","email":"...","targetZips":["38118"],"maxBudget":150000,"minCapRate":8}]'></textarea>
+        <div class="flex flex-wrap gap-3 mt-3">
+          <button type="button" class="btn" @click="importBuyers()">IMPORT JSON</button>
+          <button type="button" class="btn" @click="exportBuyers()">COPY EXPORT</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ TAB 3: CONTRACT DESK ============ -->
+    <section x-show="tab === 3" x-cloak role="tabpanel" class="space-y-4">
+      <div class="panel">
+        <h2 class="panel-title">// Finder Details</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <input class="field" placeholder="Your full legal name" x-model="finder.name" @change="persist()">
+          <input class="field" placeholder="Buyer name / entity" x-model="finder.buyerName" @change="persist()">
+          <input class="field" type="number" placeholder="Flat fee override ($)" x-model="finder.feeOverride" @change="persist()">
+          <input class="field" type="number" placeholder="Fee deductions ($)" x-model="finder.feeExpenses" @change="persist()">
+          <input class="field" placeholder="Governing state" x-model="finder.governingState" @change="persist()">
+          <select class="field" x-model="finder.feeMode" @change="persist()">
+            <option value="flat">Fee mode: flat $5,000</option>
+            <option value="percent">Fee mode: 2% of asking</option>
+          </select>
+          <input class="field" type="number" step="0.5" placeholder="Buyer required yield % (default 10)" x-model="finder.targetYield" @change="persist()">
+        </div>
+        <p class="text-xs text-slate-400 mt-2">Re-run ANALYZE DEAL after changing fee amounts.</p>
+      </div>
+
+      <div class="panel">
+        <h2 class="panel-title">// Seller Negotiation Email</h2>
+        <div class="flex flex-wrap gap-3 mb-3">
+          <button type="button" class="btn" :class="emailTemplate === 'anchor' ? '' : 'opacity-50'" @click="emailTemplate = 'anchor'; generateSellerEmail()">A) LOW-BALL CASH ANCHOR</button>
+          <button type="button" class="btn" :class="emailTemplate === 'financing' ? '' : 'opacity-50'" @click="emailTemplate = 'financing'; generateSellerEmail()">B) SELLER FINANCING</button>
+          <button type="button" class="btn" :class="emailTemplate === 'fastclose' ? '' : 'opacity-50'" @click="emailTemplate = 'fastclose'; generateSellerEmail()">C) FAST CLOSE DISCOUNT</button>
+        </div>
+        <textarea class="field h-72" x-model="sellerEmail" placeholder="Pick a template. It fills in from the active deal, and you can edit it before copying."></textarea>
+        <p class="text-xs text-slate-400 mt-2" x-show="emailNotes" x-text="'Internal note (not in email): ' + emailNotes"></p>
+        <button type="button" class="btn mt-3" @click="copy(sellerEmail)" x-show="sellerEmail">COPY TO CLIPBOARD</button>
+      </div>
+
+      <div class="panel">
+        <div class="flex flex-wrap gap-3 mb-3">
+          <button type="button" class="btn" @click="generateAnonymizedTeaser()">GENERATE ANONYMIZED DEAL TEASER</button>
+          <button type="button" class="btn" @click="copy(teaser)" x-show="teaser">COPY TO CLIPBOARD</button>
+        </div>
+        <textarea class="field h-48" readonly x-model="teaser" placeholder="Anonymized teaser appears here..."></textarea>
+      </div>
+
+      <div class="panel">
+        <div class="flex flex-wrap gap-3 mb-3">
+          <button type="button" class="btn" @click="generateNCNDClause()">GENERATE NCND / REFERRAL FEE AGREEMENT</button>
+          <button type="button" class="btn" @click="copy(ncnd)" x-show="ncnd">COPY TO CLIPBOARD</button>
+        </div>
+        <textarea class="field h-96" readonly x-model="ncnd" placeholder="NCND clause appears here..."></textarea>
+        <p class="text-xs text-amber-400 mt-2">Template only, not legal advice. Have an attorney review it before use.</p>
+      </div>
+
+      <div class="panel">
+        <button type="button" class="btn" @click="resetAll()">ERASE SAVED DATA</button>
+      </div>
+    </section>
+
+    <!-- ============ TAB 4: PIPELINE (KANBAN) ============ -->
+    <section x-show="tab === 4" x-cloak role="tabpanel" class="space-y-4">
+      <div class="panel">
+        <h2 class="panel-title">// Deal Pipeline</h2>
+        <p class="text-slate-400 text-sm mb-3" x-show="pipeline.length === 0">No deals yet. Analyze a listing and hit SAVE TO PIPELINE. Inbound webhook leads land in stage 1 automatically.</p>
+        <div class="overflow-x-auto">
+          <div class="flex gap-3 min-w-max">
+            <template x-for="(label, i) in stages" :key="label">
+              <div class="w-64 flex-shrink-0 border-2 border-slate-700">
+                <div class="p-2 border-b-2 border-slate-700 text-xs font-bold uppercase text-amber-400" x-text="'[' + label + '] (' + dealsIn(i + 1).length + ')'"></div>
+                <div class="p-2 space-y-2">
+                  <template x-for="p in dealsIn(i + 1)" :key="p.id">
+                    <div class="border-2 border-slate-700 bg-slate-800 p-2 text-xs space-y-1">
+                      <div class="font-bold" x-text="'ZIP ' + (p.deal.zip || '--') + (p.deal.isHighDensityZip ? ' [HOT]' : '')"></div>
+                      <div x-text="'Ask ' + money(p.deal.listPrice) + ' / ARV ' + money(p.deal.arv)"></div>
+                      <div x-text="'Cap ' + pct(p.deal.capRate) + ' / Score ' + p.deal.score"></div>
+                      <div :class="p.deal.badge === 'PASS' ? 'text-emerald-400' : 'text-red-400'" x-text="p.deal.badge"></div>
+                      <div class="text-slate-400" x-text="new Date(p.updatedAt).toLocaleDateString()"></div>
+                      <div class="flex flex-wrap gap-1 pt-1">
+                        <button type="button" class="btn" style="padding:0 0.75rem" :disabled="p.stage <= 1" :class="p.stage <= 1 ? 'opacity-30' : ''" @click="moveDeal(p.id, -1)" aria-label="Move back">&lt;</button>
+                        <button type="button" class="btn" style="padding:0 0.75rem" :disabled="p.stage >= 5" :class="p.stage >= 5 ? 'opacity-30' : ''" @click="moveDeal(p.id, 1)" aria-label="Move forward">&gt;</button>
+                        <button type="button" class="btn" style="padding:0 0.75rem" @click="openPipelineDeal(p.id)">OPEN</button>
+                        <button type="button" class="btn" style="padding:0 0.75rem" @click="removeFromPipeline(p.id)">DEL</button>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="border-t-2 border-slate-700 px-4 py-3 text-xs text-slate-500 uppercase text-center">
+    DEALROOM // data stays in this browser (localStorage)
+  </footer>
+</body>
+</html>
